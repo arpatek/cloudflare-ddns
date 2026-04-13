@@ -21,7 +21,7 @@ This tool keeps a Cloudflare DNS A record synchronized with the host’s current
 - Linux system with `systemd`
 - `bash`
 - `curl`
-- `jq` (if used in script; remove if not required)
+- `jq`
 - Cloudflare API token with DNS edit permissions
 
 ---
@@ -97,4 +97,3 @@ Check timer status:
 ## License
 
 MIT
-
