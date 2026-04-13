@@ -1,0 +1,9 @@
+[Unit]
+Description=Cloudflare DDNS updater (WireGuard)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/cloudflare-ddns.env
+ExecStart=/usr/local/bin/cloudflare-ddns.sh
