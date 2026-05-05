@@ -6,4 +6,5 @@ After=network-online.target
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/cloudflare-ddns.env
+ExecStartPre=/bin/sh -c 'perm=$(stat -c %%a /etc/cloudflare-ddns.env); case "$perm" in 600|400) ;; *) echo "Insecure permissions on /etc/cloudflare-ddns.env ($perm) — run: chmod 600 /etc/cloudflare-ddns.env" >&2; exit 1;; esac'
 ExecStart=/usr/local/bin/cloudflare-ddns.sh
