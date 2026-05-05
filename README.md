@@ -23,6 +23,7 @@ This tool keeps a Cloudflare DNS A record synchronized with the host’s current
 - `curl`
 - `jq`
 - Cloudflare API token with DNS edit permissions
+- Outbound access to `api.ipify.org` and `checkip.amazonaws.com`
 
 ---
 
@@ -79,7 +80,8 @@ Check timer status:
 ## Behavior
 
 - Script runs on a schedule defined by the systemd timer
-- Fetches current public IP
+- Fetches public IP from two independent sources (ipify and AWS checkip)
+- Aborts if the two sources disagree — prevents a bad update from breaking WireGuard connectivity
 - Queries Cloudflare DNS record
 - Updates record only if IP has changed
 - Exits cleanly when no update is needed
@@ -89,7 +91,8 @@ Check timer status:
 ## Security Notes
 
 - API token should be restricted to DNS edit permissions only
-- Do not commit cloudflare-ddns.env to version control
+- Do not commit `cloudflare-ddns.env` to version control
+- Set strict permissions on the env file: `sudo chmod 600 /etc/cloudflare-ddns.env`
 - Prefer storing secrets outside the repository in production setups
 
 ---
