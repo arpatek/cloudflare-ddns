@@ -7,7 +7,7 @@
 #
 # Author: Juan Garcia (arpatek)
 # Created: 2026-04-12
-# Version: 1.1
+# Version: 1.2
 # =============================================================================
 
 set -euo pipefail
