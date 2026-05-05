@@ -92,7 +92,7 @@ Check timer status:
 
 - API token should be restricted to DNS edit permissions only
 - Do not commit `cloudflare-ddns.env` to version control
-- Set strict permissions on the env file: `sudo chmod 600 /etc/cloudflare-ddns.env`
+- Set strict permissions on the env file: `sudo chmod 600 /etc/cloudflare-ddns.env` — the service will refuse to start if permissions are too open
 - Prefer storing secrets outside the repository in production setups
 
 ---
