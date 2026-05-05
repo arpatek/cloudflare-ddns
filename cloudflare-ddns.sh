@@ -7,7 +7,7 @@
 #
 # Author: Juan Garcia (arpatek)
 # Created: 2026-04-12
-# Version: 1.0
+# Version: 1.1
 # =============================================================================
 
 set -euo pipefail
@@ -20,7 +20,7 @@ set -euo pipefail
 : "${API_TOKEN:?missing}"
 : "${TTL_DUR:=120}"
 
-# ──[ String Decoration Functions ]────────────────────────────────────────────
+# ──[ Logging ]────────────────────────────────────────────────────────────────
 log_base() {
     local level="$1"
     local priority="$2"
@@ -28,13 +28,9 @@ log_base() {
     logger -t cloudflare-ddns -p "$priority" "[$level] $*"
 }
 
-log() {
-    log_base INFO user.info "$@"
-}
-
-error() {
-    log_base ERROR user.err "$@"
-}
+log()  { log_base INFO  user.info    "$@"; }
+warn() { log_base WARN  user.warning "$@"; }
+error(){ log_base ERROR user.err     "$@"; }
 
 # ──[ Required Parameters ]────────────────────────────────────────────────────
 if ! echo "$TTL_DUR" | grep -qE '^[0-9]+$'; then
@@ -43,16 +39,6 @@ if ! echo "$TTL_DUR" | grep -qE '^[0-9]+$'; then
 fi
 
 # ──[ Required Dependencies ]──────────────────────────────────────────────────
-# This script requires the following binaries:
-#   - curl   : HTTP requests to ipify and Cloudflare API
-#   - jq     : JSON parsing of API responses
-#
-# Install on Debian/Ubuntu:
-#   apt install curl jq
-#
-# Install on RHEL/CentOS:
-#   dnf install curl jq
-# ─────────────────────────────────────────────────────────────────────────────
 for cmd in curl jq; do
     command -v "$cmd" >/dev/null 2>&1 || {
         error "Missing dependency: $cmd"
@@ -60,20 +46,50 @@ for cmd in curl jq; do
     }
 done
 
+# ──[ IP Validation ]──────────────────────────────────────────────────────────
+VALID_IP_RE='^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+
+is_valid_ip() {
+    echo "$1" | grep -qE "$VALID_IP_RE"
+}
+
 # ──[ Public IP Discovery ]────────────────────────────────────────────────────
-CURRENT_IP=$(
+log "Fetching public IP from ipify"
+IP_IPIFY=$(
     curl -fsS --max-time 10 https://api.ipify.org
 ) || {
     error "Failed to contact ipify API"
     exit 1
 }
 
-if ! echo "$CURRENT_IP" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
-    error "Invalid IP received: $CURRENT_IP"
+if ! is_valid_ip "$IP_IPIFY"; then
+    error "Invalid IP from ipify: $IP_IPIFY"
     exit 1
 fi
 
+log "Fetching public IP from AWS checkip"
+IP_AWS=$(
+    curl -fsS --max-time 10 https://checkip.amazonaws.com
+) || {
+    error "Failed to contact AWS checkip API"
+    exit 1
+}
+
+if ! is_valid_ip "$IP_AWS"; then
+    error "Invalid IP from AWS checkip: $IP_AWS"
+    exit 1
+fi
+
+if [ "$IP_IPIFY" != "$IP_AWS" ]; then
+    error "IP source disagreement: ipify=$IP_IPIFY aws=$IP_AWS — aborting to avoid bad update"
+    exit 1
+fi
+
+CURRENT_IP="$IP_IPIFY"
+log "Public IP confirmed: $CURRENT_IP (ipify and AWS agree)"
+
 # ──[ Cloudflare DNS Record Fetch ]────────────────────────────────────────────
+log "Fetching DNS record: $RECORD_NAME ($RECORD_ID)"
 GET_RESPONSE=$(
     curl -fsS --max-time 10 -X GET \
         "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
@@ -98,17 +114,19 @@ DNS_IP="$(
 )"
 
 if [ -z "$DNS_IP" ]; then
-    error "Could not extract DNS IP from response"
+    error "Could not extract DNS IP from GET response"
     exit 1
 fi
 
+log "Current DNS record: $RECORD_NAME → $DNS_IP"
+
 # ──[ State Comparison ]──────────────────────────────────────────────────────
 if [ "$CURRENT_IP" = "$DNS_IP" ]; then
-    log "No change: current_ip=$CURRENT_IP"
+    log "No update needed: $RECORD_NAME is already $CURRENT_IP"
     exit 0
 fi
 
-log "Updating IP: dns_ip=$DNS_IP → target_ip=$CURRENT_IP"
+log "IP change detected: $DNS_IP → $CURRENT_IP — updating $RECORD_NAME"
 
 # ──[ Cloudflare DNS Update ]──────────────────────────────────────────────────
 DNS_PROXIED="$(echo "$GET_RESPONSE" | jq -r '.result.proxied // false')"
@@ -141,6 +159,5 @@ if [ "$PUT_SUCCESS" != "true" ]; then
     exit 1
 fi
 
-# ──[ Success Output ]─────────────────────────────────────────────────────────
-log "Cloudflare record updated to: $CURRENT_IP"
-
+# ──[ Success ]────────────────────────────────────────────────────────────────
+log "Successfully updated $RECORD_NAME: $DNS_IP → $CURRENT_IP"
